@@ -1,11 +1,13 @@
 # -*- coding: utf-8 -*-
 
-'''
-Device driver for Bookeen's Cybook Odyssey/Muse/Ocean (extended functionality) 
-'''
+"""
+Device driver for Bookeen's Cybook Odyssey/Muse/Ocean (extended functionality)
+"""
 
 
 from calibre.devices.cybook.driver import ORIZON
+import sqlite3
+
 
 class MUSE_EX(ORIZON):
 	name = 'Cybook Muse Ex Device Interface'
@@ -22,4 +24,11 @@ class MUSE_EX(ORIZON):
 	VENDOR_NAME = 'USB_2.0'
 	WINDOWS_MAIN_MEM = WINDOWS_CARD_A_MEM = 'USB_FLASH_DRIVER'
 
+	def test_database(self):
+		db = sqlite3.connect('library.main')
 
+		pass
+
+if __name__ == '__main__':
+	driver = MUSE_EX()
+	driver.test_database()
