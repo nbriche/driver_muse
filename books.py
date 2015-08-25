@@ -12,7 +12,7 @@ from contextlib import closing
 from calibre.devices.usbms.books import Book
 from calibre.ebooks.metadata import author_to_author_sort
 from calibre.library import db
-from calibre.utils.config import prefs
+# from calibre.utils.config import prefs
 
 
 def dict_factory(cursor, row):
@@ -23,7 +23,7 @@ def dict_factory(cursor, row):
 
 
 class BookeenDatabase(object):
-    def __init__(self, path_main, path_card=None, update_field=None):
+    def __init__(self, path_main, path_card=None):
         logging.debug("init db")
 
         self.databases = {'main': {'uuid': '', 'path': path_main, 'prefix_fs': '/mnt/fat/', 'books': {}}, 'carda': {'uuid': '', 'path': path_card, 'prefix_fs': '/mnt/sd/', 'books': {}}}
@@ -38,13 +38,6 @@ class BookeenDatabase(object):
         self.init_db('main')
         if self.databases['carda']['path']:
             self.init_db('carda')
-
-        if update_field is not None:
-            calibre_db = db(prefs['library_path']).new_api
-            if update_field and update_field in calibre_db.fields.keys():
-                logging.debug("We can update the 'read' field")
-                self.can_set_as_read = True
-                self.set_as_read_field = update_field
 
     def init_db(self, database):
 
@@ -135,17 +128,6 @@ class BookeenDatabase(object):
         for database in self.databases.values():
             if uuid == database['uuid']:
                 return database['path']
-
-    def set_as_read(self, book_ids):
-        affected_books = []
-        if self.can_set_as_read:
-            logging.debug("Updating books: {}".format(book_ids))
-            calibre_db = db(prefs['library_path']).new_api
-            affected_books = calibre_db.set_field(self.set_as_read_field, {book_id: True for book_id in book_ids})
-            logging.debug("Affected books: {}".format(affected_books))
-        else:
-            logging.debug("Can't update books")
-        return affected_books
 
 
 class Descriptions(object):

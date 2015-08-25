@@ -56,6 +56,9 @@ class MuseEx(MUSE):
     SCAN_FROM_ROOT = False
 
     bookeen_database = None
+    can_set_as_read = False
+    to_set_as_read = []
+    set_as_read_fields = []
 
     def books(self, oncard=None, end_session=True):
 
@@ -72,21 +75,10 @@ class MuseEx(MUSE):
                 carda_lib = "{}/system/library".format(self.driveinfo['A']['prefix'])
 
             logging.debug("device databases: {}, {}".format(main_lib, carda_lib))
-            self.bookeen_database = BookeenDatabase(main_lib, carda_lib, self.settings().extra_customization[self.OPT_UPDATE_FIELD_READ])
+            self.bookeen_database = BookeenDatabase(main_lib, carda_lib)
 
         try:
-            to_close, to_set_as_read = self.bookeen_database.match(oncard, bl, int(self.settings().extra_customization[self.OPT_CLOSE_THRESHOLD]))
-
-            if self.settings().extra_customization[self.OPT_UPDATE_FIELD_READ] and self.bookeen_database.can_set_as_read:
-                if to_set_as_read:
-                    logging.debug("to set as read: {}".format(to_set_as_read))
-                    affected = self.bookeen_database.set_as_read(to_set_as_read)
-                    logging.debug("non affected: {}".format(set(to_set_as_read) - set(affected)))
-
-                else:
-                    logging.debug("Nothing to set as read")
-            else:
-                logging.debug("No target field: disabled set as read")
+            to_close, self.to_set_as_read = self.bookeen_database.match(oncard, bl, int(self.settings().extra_customization[self.OPT_CLOSE_THRESHOLD]))
 
             if int(self.settings().extra_customization[self.OPT_CLOSE_THRESHOLD]) > 0:
                 if to_close:
@@ -99,3 +91,33 @@ class MuseEx(MUSE):
             logging.debug(e)
 
         return bl
+
+    def synchronize_with_db(self, db, id_, book, first_call):
+        changed = None
+
+        if first_call:
+            set_as_read_fields = list(set(self.settings().extra_customization[self.OPT_UPDATE_FIELD_READ]) & db.fields.keys())
+            logging.debug("Calculated update fields: {}".format(set_as_read_fields))
+            if set_as_read_fields:
+                curated_fields = list(set(set_as_read_fields) & db().new_api.fields.keys())
+                if set_as_read_fields and curated_fields:
+                    self.can_set_as_read = True
+                    self.set_as_read_fields = curated_fields
+                    logging.debug("We can update the 'read' fields {}".format(curated_fields))
+                else:
+                    logging.debug("No valid field found.")
+
+        if self.can_set_as_read:
+            if self.to_set_as_read:
+                if id_ in self.to_set_as_read:
+                    logging.debug("Updating book: {}".format(id_))
+                    for field in self.set_as_read_fields:
+                        logging.debug("Set to read, field {}: {}".format(field, (id_, str(book))))
+                        changed |= db.new_api.set_field(field, {id_: True})
+                    logging.debug("Changed: {}".format(changed))
+            elif first_call:
+                logging.debug("Nothing to set as read")
+        elif first_call:
+            logging.debug("No target field: disabled set as read")
+
+        return changed, (None, False)
