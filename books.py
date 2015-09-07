@@ -4,15 +4,14 @@ __author__ = 'Nicolas Briche'
 __license__ = 'GPL v3'
 __docformat__ = 'restructuredtext en'
 
-import logging
+from logger import log
 import os
 import sqlite3
+import time
 from contextlib import closing
 
 from calibre.devices.usbms.books import Book
 from calibre.ebooks.metadata import author_to_author_sort
-from calibre.library import db
-# from calibre.utils.config import prefs
 
 
 def dict_factory(cursor, row):
@@ -24,7 +23,7 @@ def dict_factory(cursor, row):
 
 class BookeenDatabase(object):
     def __init__(self, path_main, path_card=None):
-        logging.debug("init db")
+        log.debug("init db")
 
         self.databases = {'main': {'uuid': '', 'path': path_main, 'prefix_fs': '/mnt/fat/', 'books': {}}, 'carda': {'uuid': '', 'path': path_card, 'prefix_fs': '/mnt/sd/', 'books': {}}}
         self.collections = {}
@@ -43,15 +42,15 @@ class BookeenDatabase(object):
 
         self.databases[database]['uuid'] = ''
 
-        with closing(sqlite3.connect(self.databases[database]['path'])) as connection:
-            logging.debug("connect to db")
+        with closing(sqlite3.connect(str(self.databases[database]['path']))) as connection:
+            log.debug("connect to db")
             connection.row_factory = dict_factory
             cursor = connection.cursor()
             cursor.execute('SELECT f_db_uuid FROM T_UUIDDB')
             self.databases[database]['uuid'] = cursor.fetchone()['f_db_uuid']
-            logging.debug("dbuuid: {}".format(self.databases[database]['uuid']))
+            log.debug("dbuuid: {}".format(self.databases[database]['uuid']))
             if database == 'main':
-                logging.debug("this is the main db")
+                log.debug("this is the main db")
 
                 cursor.execute('SELECT * FROM T_SHELF')
                 for shelf in cursor.fetchall():
@@ -61,19 +60,19 @@ class BookeenDatabase(object):
                 for link in cursor.fetchall():
                     self.shelves_links[link['f_item_id']] = (link['f_shelf_id'], link['f_db_uuid'])
 
-            logging.debug("finding books")
+            log.debug("finding books")
             cursor.execute('SELECT * FROM T_ITEM WHERE f_item_filetype=2')
             for book_row in cursor.fetchall():
                 finished = True if book_row['f_islastpage'] else False
 
-                book = BookeenBook('', book_row['f_internal_uri'][len(self.databases[database]['prefix_fs']):], book_row['f_title'], finished=finished, current_page=book_row['f_current_page'])
+                book = BookeenBook('', book_row['f_internal_uri'][len(self.databases[database]['prefix_fs']):], book_row['f_title'], finished=finished, current_page=book_row['f_current_page'], date=time.gmtime(book_row['f_documenttime']))
                 if book_row['f_id_item'] in self.shelves_links.keys():
                     self.collections[self.shelves_links[book_row['f_id_item']][0]].add_book(book)
 
                 self.books[(self.databases[database]['uuid'], book_row['f_id_item'])] = book
                 self.databases[database]['books'][book_row['f_id_item']] = book
 
-            logging.debug("Found {} books on {}".format(len(self.books), database))
+            log.debug("Found {} books on {}".format(len(self.books), database))
 
     def match(self, oncard, calibre_books, threshold=0):
         # ['#pages', '#cleaned', 'rights', 'author_sort', 'author_link_map', 'publisher', 'db_id', 'device_collections', '#onmuse', 'authors', 'languages', '#words', 'uuid', 'rating', 'tags', '#list_remove_orizon', 'cover', 'toc', 'user_metadata', '#author_sort', '#list_orizon', '#read', 'publication_type', 'series_index', 'size', 'series', 'last_modified', '#maj_late', 'identifiers', '#isbn', '#goodreads', '#list_remove_muse', '#onorizon', 'comments', 'title_sort', '#list_muse', 'author_sort_map', 'guide', 'thumbnail', 'formats', 'lpath', 'timestamp', 'pubdate', 'book_producer', 'user_categories', 'spine', 'mime', '#progression', '#chapters', 'cover_data', '#updated', 'title', 'application_id', 'manifest']
@@ -84,27 +83,27 @@ class BookeenDatabase(object):
         if oncard is None:
             oncard = 'main'
         elif oncard != 'carda':
-            logging.debug("No database for '{}'".format(oncard))
+            log.debug("No database for '{}'".format(oncard))
             raise BookeenDatabaseException(oncard)
 
-        logging.debug("Matching books for {}...".format(oncard))
+        log.debug("Matching books for {} (threshold is {})...".format(oncard, threshold))
 
         for device_book_id, device_book in self.databases[oncard]['books'].items():
             assert isinstance(device_book, BookeenBook)
             found = False
             for idx, calibre_book in enumerate(calibre_books):
                 if device_book.lpath == calibre_book.lpath:
-                    # logging.debug("Found : {} -> {}::{} ({} / {})".format(calibre_book.uuid, self.databases[oncard]['uuid'], book_id, calibre_book.title, device_book.title))
+                    # log.debug("Found : {} -> {}::{} ({} / {})".format(calibre_book.uuid, self.databases[oncard]['uuid'], book_id, calibre_book.title, device_book.title))
                     found = True
                     # calibre_books[idx].bookeen_id = (self.databases[oncard]['uuid'], device_book_id)
                     if device_book.finished:
                         to_set_as_read.append(calibre_book.application_id)
 
             if not found:
-                logging.debug("{} ({}) wasn't found in Calibre".format(device_book.title, device_book.lpath))
+                log.debug("{} ({}) wasn't found in Calibre".format(device_book.title, device_book.lpath))
 
             if threshold > 0:
-                # logging.debug("Current page is {}, threshold is {} for {}".format(device_book.current_page, threshold, device_book))
+                # log.debug("Current page is {}, threshold is {} for {}".format(device_book.current_page, threshold, device_book))
                 if 0 <= device_book.current_page <= threshold:
                     to_close.append((self.databases[oncard]['uuid'], device_book_id))
 
@@ -112,17 +111,17 @@ class BookeenDatabase(object):
 
     def close_book(self, book_id):
 
-        uuid, bookid = book_id
+        # uuid, bookid = book_id
 
-        # logging.debug("closing book {}".format(book_id))
+        # log.debug("closing book {}".format(book_id))
 
-        with closing(sqlite3.connect(self.get_database_path(uuid))) as connection:
-            # logging.debug("connect to db")
-            # connection.row_factory = dict_factory
-            # cursor = connection.cursor()
-            # cursor.execute('UPDATE T_ITEM SET f_current_page = -1, f_last_read = NULL WHERE f_id_item = {}'.format(bookid))
-            # connection.commit()
-            logging.debug("Closed {} ({})".format(book_id, self.books[book_id]))
+        # with closing(sqlite3.connect(self.get_database_path(uuid))) as connection:
+        #   log.debug("connect to db")
+        #     connection.row_factory = dict_factory
+        #     cursor = connection.cursor()
+        #     cursor.execute('UPDATE T_ITEM SET f_current_page = -1, f_last_read = NULL WHERE f_id_item = {}'.format(bookid))
+        #     connection.commit()
+        log.debug("Closed {} ({})".format(book_id, self.books[book_id]))
 
     def get_database_path(self, uuid):
         for database in self.databases.values():
@@ -149,7 +148,7 @@ class BookeenShelf(object):
         self.id = data['f_id_shelf']
         self.readonly = True if data['f_readonly'] == 1 else False
         self.books = []
-        logging.debug("init'ed shelf {}".format(self.id))
+        log.debug("init'ed shelf {}".format(self.id))
 
     def __str__(self):
         return "{} -  {} ({})".format(self.name, self.id, [book.title for book in self.books])
