@@ -7,7 +7,7 @@ LOG_LEVEL = logging.DEBUG
 
 logging.basicConfig(
     level=LOG_LEVEL,
-    format='%(asctime)s %(levelname)-8s %(threadName)s %(message)s',
+    format='%(levelname)-8s: %(asctime)s MUSE_EX %(threadName)s %(message)s',
     datefmt='%d/%m/%Y %H:%M:%S')
 # log.basicConfig(level=logging.DEBUG, format="%(levelname)s: %(relativeCreated)d MUSE_EX: %(message)s")
 
@@ -32,7 +32,7 @@ log = logging.getLogger('muse_ex')
 log.setLevel(logging.DEBUG)
 
 hdlr = logging.FileHandler("std_err_out.log", mode='a')
-hdlr.setFormatter(logging.Formatter('%(asctime)s %(levelname)-8s %(threadName)s %(message)s'))
+hdlr.setFormatter(logging.Formatter('%(levelname)-8s: %(asctime)s MUSE_EX %(threadName)s %(message)s'))
 
 sys.stdout = StreamToLogger('STDOUT', hdlr, logging.INFO)
 sys.stderr = StreamToLogger('STDERR', hdlr, logging.ERROR)

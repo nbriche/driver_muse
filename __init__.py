@@ -12,6 +12,8 @@ from calibre.devices.usbms.books import BookList
 from books import BookeenDatabase, BookeenDatabaseException, BookeenBook
 
 from logger import log
+from calibre.library import db
+# from calibre.utils.config import prefs
 
 
 class MuseEx(MUSE):
@@ -43,7 +45,7 @@ class MuseEx(MUSE):
         _('"Obsolete" custom field') + ':::<p>' +
         _('Select which field to update to \'Yes\' when an obsolete book is detected (Calibre has a more recent copy of that book).') + '</p>',
         _('"Read" custom field') + ':::<p>' +
-        _('Select which field to update to \'Yes\' when a read book is detected.') + '</p>',
+        _('Select which fields to update to \'Yes\' when a read book is detected.  The first field will be unset when the book is removed.  Any following fields will not be unset.') + '</p>',
         _('Current page threshold for closing a book') + ':::<p>' +
         _('If you open a book, the device considers it as "currently reading", even if you only read the cover.  Calibre will close any book whose current page is under this field\'s value, and reset it to "New".  Set to 0 to disable.') + '</p>',
     ]
@@ -99,7 +101,7 @@ class MuseEx(MUSE):
         changed = set()
 
         if self.set_as_read_fields is None:
-            self.set_as_read_fields = list(set(self.settings().extra_customization[self.OPT_UPDATE_READ_COLUMNS].replace(" ", "").split(",")) & set(db.new_api.fields.keys()))
+            self.set_as_read_fields = [field for field in self.settings().extra_customization[self.OPT_UPDATE_READ_COLUMNS].replace(" ", "").split(",") if field in db.new_api.fields.keys()]
             if self.set_as_read_fields:
                 self.can_set_as_read = True
                 log.debug("We can update the 'read' fields {}".format(self.set_as_read_fields))
@@ -124,3 +126,38 @@ class MuseEx(MUSE):
 
         # log.debug("End Sync with DB - {}{}".format(book, " (First call)" if first_call else ""))
         return changed, (None, False)
+
+    def remove_books_from_metadata(self, paths, booklists):
+        # log.debug("{}".format((paths, booklists)))
+        # if self.can_set_as_read:
+        #    calibre_db = db(prefs['library_path']).new_api
+        changed = set()
+
+
+        for i, path in enumerate(paths):
+            self.report_progress((i+1) / float(len(paths)), _('Updating fields for deleted books...'))
+            for bl in booklists:
+                for book in bl:
+                    # log.debug("Compare {} and {}".format(path, book.path))
+                    if path.endswith(book.path):
+                        log.debug("We'll try to update {}".format(book))
+                        log.debug("Here are the original values for {}: {}".format(book.application_id, db().new_api.get_metadata(book.application_id)))
+
+                        try:
+                            log.debug("Unset, field {}: {}".format(self.set_as_read_fields[0], (book.application_id, str(book))))
+                            changed |= db().new_api.set_field(self.set_as_read_fields[0], {book.application_id: None})
+                        except Exception, e:
+                            log.error(e)
+                        log.debug("Here are the values for {} after settings: {}".format(book.application_id, db().new_api.get_metadata(book.application_id)))
+
+        log.debug(changed)
+        log.debug('Finished updating fields for %d books'%(len(paths)))
+        db().new_api.commit_dirty_cache()
+        from calibre.gui2.ui import get_gui
+
+        if get_gui():
+            log.debug("Got GUI!  Refreshing view for {} ({})".format(changed, db().new_api.all_field_for(self.set_as_read_fields[0], changed)))
+            get_gui().library_view.model().db.refresh()
+            get_gui().library_view.model().refresh_ids(changed)
+        super(MUSE, self).remove_books_from_metadata(paths, booklists)
+
